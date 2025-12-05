@@ -511,7 +511,8 @@ end
 
 local function createDropDown(parent, setting, position)
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0, 280, 0, 50)
+    frame.Size = UDim2.new(0, 260, 0, 40)
+
     frame.Position = position
     frame.BackgroundTransparency = 1
     frame.ZIndex = 50
@@ -532,7 +533,8 @@ local function createDropDown(parent, setting, position)
     local dropDownButton = Instance.new("TextButton")
     dropDownButton.Size = UDim2.new(0, 120, 0, 30)
     dropDownButton.Position = UDim2.new(0.6, 310, 0.5, -15)
-    dropDownButton.BackgroundColor3 = Color3.fromRGB(20, 20, 22)
+    dropDownButton.BackgroundColor3 = Color3.fromRGB(18, 18, 20)
+
     dropDownButton.BorderSizePixel = 0
     dropDownButton.AutoButtonColor = false
     dropDownButton.Text = ""
@@ -671,7 +673,8 @@ local function createDropDown(parent, setting, position)
                 end)
 
                 if selectedText.Text == option then
-                    optionButton.BackgroundColor3 = Color3.fromRGB(22, 28, 30)
+                    optionButton.BackgroundColor3 = Color3.fromRGB(18, 18, 20)
+
                     optionButton.TextColor3 = Color3.fromRGB(255, 75, 75)
                 end
             end
@@ -1239,7 +1242,8 @@ local function createModuleButton(parent, moduleData)
     local moduleButton = Instance.new("Frame")
     moduleButton.Size = UDim2.new(1, -20, 0, 40)
     moduleButton.Position = UDim2.new(0, 10, 0, 0)
-    moduleButton.BackgroundColor3 = Color3.fromRGB(15, 15, 17)
+    moduleButton.BackgroundColor3 = Color3.fromRGB(18, 18, 20)
+    moduleButton.BackgroundTransparency = 0.15
     moduleButton.BorderSizePixel = 0
     moduleButton.ZIndex = parent.ZIndex + 1
     moduleButton.Parent = parent
@@ -1263,7 +1267,8 @@ local function createModuleButton(parent, moduleData)
     moduleName.Position = UDim2.new(0, 10, 0, 0)
     moduleName.BackgroundTransparency = 1
     moduleName.Text = moduleData.name
-    moduleName.TextColor3 = Color3.fromRGB(150, 153, 163)
+    moduleName.TextColor3 = Color3.fromRGB(200, 200, 200)
+
     moduleName.TextXAlignment = Enum.TextXAlignment.Left
     moduleName.Font = Enum.Font.Gotham
     moduleName.TextSize = 18
@@ -1442,9 +1447,11 @@ function createMainUI()
     screenGui.Parent = player:WaitForChild("PlayerGui")
 
     local mainFrame = Instance.new("Frame")
-    mainFrame.Size = UDim2.new(0, 900, 0, 600)
+    mainFrame.Size = UDim2.new(0, 700, 0, 480) -- уменьшено
     mainFrame.Position = UDim2.new(0.5, -450, 0.5, -300)
-    mainFrame.BackgroundColor3 = Color3.fromRGB(8, 8, 8)
+    mainFrame.BackgroundColor3 = Color3.fromRGB(12, 12, 12)
+    mainFrame.BackgroundTransparency = 0.25 -- полупрозрачность
+
     mainFrame.BorderSizePixel = 0
     mainFrame.Visible = true
     mainFrame.ZIndex = ZINDEX.MAIN_FRAME -- ИСПРАВЛЕНО: Правильный Z-Index
@@ -1511,7 +1518,8 @@ function createMainUI()
     local categoryFrame = Instance.new("Frame")
     categoryFrame.Size = UDim2.new(0, 75, 1, -6)
     categoryFrame.Position = UDim2.new(0, 3, 0, 3)
-    categoryFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 17)
+categoryFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+categoryFrame.BackgroundTransparency = 0.2
     categoryFrame.BorderSizePixel = 0
     categoryFrame.ZIndex = mainFrame.ZIndex + 1
     categoryFrame.Parent = mainFrame
@@ -1532,7 +1540,9 @@ function createMainUI()
     local ModuleFrame = Instance.new("Frame")
     ModuleFrame.Size = UDim2.new(0, 150, 1, -6)
     ModuleFrame.Position = UDim2.new(0, 80, 0, 3)
-    ModuleFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 17)
+    ModuleFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    ModuleFrame.BackgroundTransparency = 0.2
+
     ModuleFrame.BorderSizePixel = 0
     ModuleFrame.ZIndex = mainFrame.ZIndex + 1
     ModuleFrame.Parent = mainFrame
@@ -1692,8 +1702,9 @@ function createMainUI()
     settingsContainer.Name = "SettingsContainer"
     settingsContainer.Size = UDim2.new(0, 615, 0, 0)
     settingsContainer.Position = UDim2.new(0, 257, 0, 90)
-    settingsContainer.BackgroundColor3 = Color3.fromRGB(15, 15, 17)
-    settingsContainer.BackgroundTransparency = 1
+    settingsContainer.BackgroundColor3 = Color3.fromRGB(18, 18, 20)
+settingsContainer.BackgroundTransparency = 0.15
+
     settingsContainer.ZIndex = mainFrame.ZIndex + 1
     settingsContainer.Parent = mainFrame
 
