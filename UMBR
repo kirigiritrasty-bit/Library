@@ -511,8 +511,7 @@ end
 
 local function createDropDown(parent, setting, position)
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0, 260, 0, 40)
-
+    frame.Size = UDim2.new(0, 280, 0, 50)
     frame.Position = position
     frame.BackgroundTransparency = 1
     frame.ZIndex = 50
@@ -533,8 +532,7 @@ local function createDropDown(parent, setting, position)
     local dropDownButton = Instance.new("TextButton")
     dropDownButton.Size = UDim2.new(0, 120, 0, 30)
     dropDownButton.Position = UDim2.new(0.6, 310, 0.5, -15)
-    dropDownButton.BackgroundColor3 = Color3.fromRGB(18, 18, 20)
-
+    dropDownButton.BackgroundColor3 = Color3.fromRGB(20, 20, 22)
     dropDownButton.BorderSizePixel = 0
     dropDownButton.AutoButtonColor = false
     dropDownButton.Text = ""
@@ -673,8 +671,7 @@ local function createDropDown(parent, setting, position)
                 end)
 
                 if selectedText.Text == option then
-                    optionButton.BackgroundColor3 = Color3.fromRGB(18, 18, 20)
-
+                    optionButton.BackgroundColor3 = Color3.fromRGB(22, 28, 30)
                     optionButton.TextColor3 = Color3.fromRGB(255, 75, 75)
                 end
             end
@@ -1242,8 +1239,7 @@ local function createModuleButton(parent, moduleData)
     local moduleButton = Instance.new("Frame")
     moduleButton.Size = UDim2.new(1, -20, 0, 40)
     moduleButton.Position = UDim2.new(0, 10, 0, 0)
-    moduleButton.BackgroundColor3 = Color3.fromRGB(18, 18, 20)
-    moduleButton.BackgroundTransparency = 0.15
+    moduleButton.BackgroundColor3 = Color3.fromRGB(15, 15, 17)
     moduleButton.BorderSizePixel = 0
     moduleButton.ZIndex = parent.ZIndex + 1
     moduleButton.Parent = parent
@@ -1267,8 +1263,7 @@ local function createModuleButton(parent, moduleData)
     moduleName.Position = UDim2.new(0, 10, 0, 0)
     moduleName.BackgroundTransparency = 1
     moduleName.Text = moduleData.name
-    moduleName.TextColor3 = Color3.fromRGB(200, 200, 200)
-
+    moduleName.TextColor3 = Color3.fromRGB(150, 153, 163)
     moduleName.TextXAlignment = Enum.TextXAlignment.Left
     moduleName.Font = Enum.Font.Gotham
     moduleName.TextSize = 18
@@ -1702,9 +1697,8 @@ categoryFrame.BackgroundTransparency = 0.2
     settingsContainer.Name = "SettingsContainer"
     settingsContainer.Size = UDim2.new(0, 615, 0, 0)
     settingsContainer.Position = UDim2.new(0, 257, 0, 90)
-    settingsContainer.BackgroundColor3 = Color3.fromRGB(18, 18, 20)
-settingsContainer.BackgroundTransparency = 0.15
-
+    settingsContainer.BackgroundColor3 = Color3.fromRGB(15, 15, 17)
+    settingsContainer.BackgroundTransparency = 1
     settingsContainer.ZIndex = mainFrame.ZIndex + 1
     settingsContainer.Parent = mainFrame
 
