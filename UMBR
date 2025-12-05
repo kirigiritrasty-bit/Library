@@ -757,7 +757,8 @@ end
 
 local function createButton(parent, setting, position)
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0, 280, 0, 50)
+    frame.Size = UDim2.new(0, 260, 0, 40)
+
     frame.Position = position
     frame.BackgroundTransparency = 1
     frame.ZIndex = parent.ZIndex + 1
@@ -818,7 +819,8 @@ end
 
 local function createTextField(parent, setting, position)
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0, 280, 0, 50)
+    frame.Size = UDim2.new(0, 260, 0, 40)
+
     frame.Position = position
     frame.BackgroundTransparency = 1
     frame.ZIndex = parent.ZIndex + 1
@@ -1700,7 +1702,7 @@ categoryFrame.BackgroundTransparency = 0.2
     
     local settingsContainer = Instance.new("Frame")
     settingsContainer.Name = "SettingsContainer"
-    settingsContainer.Size = UDim2.new(0, 700, 0, 480)
+    settingsContainer.Size = UDim2.new(0, 615, 0, 0)
     settingsContainer.Position = UDim2.new(0, 257, 0, 90)
     settingsContainer.BackgroundColor3 = Color3.fromRGB(18, 18, 20)
     settingsContainer.BackgroundTransparency = 0.15
