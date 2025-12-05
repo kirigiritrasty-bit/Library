@@ -1,385 +1,471 @@
--- LinoriaUmbrella.lua
--- Hybrid: Linoria-style API with Umbrella-style visuals
--- Drop this file into your scripts and require it or dofile it.
+-- LinoriaUmbrella_Full.lua
+-- Hybrid: Linoria-compatible API with Umbrella visuals
+-- One-file distribution (CreateWindow, Tabs, Toggles, Sliders, Dropdowns, ColorPicker, KeyPicker, SaveManager, Notifications)
 
-local RunService = game:GetService("RunService")
+-- Services
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
-local TextService = game:GetService("TextService")
+local HttpService = game:GetService("HttpService")
 local CoreGui = game:GetService("CoreGui")
+local TextService = game:GetService("TextService")
 
 local LocalPlayer = Players.LocalPlayer
 
--- Basic protectgui (works with some exploit envs)
-local protectgui = protectgui or (syn and syn.protect_gui) or (function(g) pcall(function() g.Parent = CoreGui end) end)
+-- protect gui helper (works with exploit environments)
+local protectgui = protectgui or (syn and syn.protect_gui) or (function(gui) pcall(function() gui.Parent = CoreGui end) end)
 
--- Globals
+-- Expose Toggles/Options globally like Linoria
 getgenv().Toggles = getgenv().Toggles or {}
+getgenv().Options = getgenv().Options or {}
 local Toggles = getgenv().Toggles
-local Options = {}
-getgenv().Options = Options
+local Options = getgenv().Options
 
--- Colors/style (Umbrella inspired)
+-- Style (Umbrella-inspired)
 local STYLE = {
     ACCENT = Color3.fromRGB(255,75,75),
-    TEXT = Color3.fromRGB(200,200,200),
-    BG = Color3.fromRGB(20,20,22),
-    DARK = Color3.fromRGB(15,15,17),
-    ELEM = Color3.fromRGB(30,30,32),
-    OUTLINE = Color3.fromRGB(40,40,42),
+    TEXT = Color3.fromRGB(220,220,220),
+    SUBTEXT = Color3.fromRGB(150,150,150),
+    BG = Color3.fromRGB(18,18,20),
+    DARK = Color3.fromRGB(14,14,16),
+    ELEM = Color3.fromRGB(26,26,28),
+    OUTLINE = Color3.fromRGB(36,36,38),
     FONT = Enum.Font.Gotham
 }
 
--- Utility helpers
-local function tween(instance, props, t)
-    t = t or 0.18
-    local info = TweenInfo.new(t, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-    local tw = TweenService:Create(instance, info, props)
-    tw:Play()
-    return tw
-end
-
+-- Utils
+local function safeSet(inst, prop, val) pcall(function() inst[prop] = val end) end
 local function create(class, props)
     local inst = Instance.new(class)
     if props then
-        for k,v in pairs(props) do
-            if pcall(function() inst[k] = v end) then end
-        end
+        for k,v in pairs(props) do safeSet(inst, k, v) end
     end
     return inst
 end
+local function tween(inst, props, t, style, dir)
+    t = t or 0.18; style = style or Enum.EasingStyle.Quad; dir = dir or Enum.EasingDirection.Out
+    local tw = TweenService:Create(inst, TweenInfo.new(t, style, dir), props)
+    tw:Play(); return tw
+end
+local function round(num, step) step = step or 1 return math.floor(num/step+0.5)*step end
 
-local ScreenGui = create("ScreenGui", {Name = "LinoriaUmbrellaUI", ZIndexBehavior = Enum.ZIndexBehavior.Sibling})
+-- ScreenGui
+local ScreenGui = create("ScreenGui", {Name = "LinoriaUmbrella_UI", ResetOnSpawn = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling})
 protectgui(ScreenGui)
 ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
--- Main window factory
+-- Save manager (uses writefile/readfile)
+local Save = {}
+Save.folder = "LinoriaUmbrella"
+Save.getPath = function() return Save.folder .. "/settings_" .. LocalPlayer.Name .. ".json" end
+Save.load = function()
+    if not isfolder then return {} end
+    if not isfolder(Save.folder) then pcall(function() makefolder(Save.folder) end) end
+    if isfile and isfile(Save.getPath()) then
+        local ok, v = pcall(function() return HttpService:JSONDecode(readfile(Save.getPath())) end)
+        if ok and type(v) == "table" then return v end
+    end
+    return {}
+end
+Save.save = function(tbl)
+    if not isfolder then return end
+    if not isfolder(Save.folder) then pcall(function() makefolder(Save.folder) end) end
+    if isfile then
+        pcall(function() writefile(Save.getPath(), HttpService:JSONEncode(tbl)) end)
+    end
+end
+
+local saved_data = Save.load()
+
+-- Notifications (Umbrella-like)
+local notifications_frame = create("Frame", {Name="LU_Notifs", Size=UDim2.new(0,340,0,1), Position=UDim2.new(1,-360,0,20), BackgroundTransparency=1, Parent = ScreenGui})
+local notifications_layout = create("UIListLayout", {Parent=notifications_frame}); notifications_layout.Padding = UDim.new(0,8); notifications_layout.SortOrder = Enum.SortOrder.LayoutOrder
+local active_notifs = 0
+local max_notifs = 5
+local function notify(text, typ, duration)
+    if active_notifs >= max_notifs then return end
+    active_notifs = active_notifs + 1
+    typ = typ or "info"
+    duration = duration or 4
+    local colors = { success = Color3.fromRGB(46,204,113), error = Color3.fromRGB(231,76,60), warning = Color3.fromRGB(241,196,15), info = Color3.fromRGB(52,152,219)}
+    local color = colors[typ] or colors.info
+
+    local frame = create("Frame", {Size = UDim2.new(0,330,0,60), BackgroundColor3 = STYLE.ELEM, Parent = notifications_frame})
+    create("UICorner", {Parent=frame, CornerRadius = UDim.new(0,8)})
+    local bar = create("Frame", {Size=UDim2.new(0,4,1,0), Position=UDim2.new(0,0,0,0), BackgroundColor3=color, Parent=frame})
+    create("UICorner", {Parent=bar, CornerRadius = UDim.new(0,8)})
+    local label = create("TextLabel", {Text=text, BackgroundTransparency=1, TextColor3=STYLE.TEXT, Font=Enum.Font.GothamMedium, TextSize=14, Size=UDim2.new(1,-10,0,28), Position=UDim2.new(0,50,0,8), Parent=frame})
+    local timeLabel = create("TextLabel", {Text=os.date("%H:%M:%S"), BackgroundTransparency=1, TextColor3=STYLE.SUBTEXT, Font=Enum.Font.Gotham, TextSize=11, Size=UDim2.new(1,-10,0,16), Position=UDim2.new(0,50,0,34), Parent=frame})
+    -- appear tween
+    frame.Position = UDim2.new(0,360,0,0)
+    tween(frame, {Position = UDim2.new(0,0,0,0), BackgroundTransparency = 0}, 0.36)
+    -- progress
+    local prog = create("Frame", {Size=UDim2.new(1,0,0,3), Position=UDim2.new(0,0,1,-3), BackgroundColor3=color, Parent=frame})
+    tween(prog, {Size = UDim2.new(0,0,0,3)}, duration)
+    delay(duration, function()
+        tween(frame, {Position = UDim2.new(0,360,0,0), BackgroundTransparency = 1}, 0.28).Completed:Wait()
+        frame:Destroy()
+        active_notifs = active_notifs - 1
+    end)
+end
+
+-- Library
 local Library = {}
 Library.Windows = {}
 
-function Library:CreateWindow(config)
-    config = config or {}
-    local Title = config.Title or "LinoriaUmbrella"
-    local Pos = config.Position or UDim2.fromScale(0.5,0.5)
-    local Size = config.Size or UDim2.new(0,700,0,420)
+-- CreateWindow (full window with left categories and right area)
+function Library:CreateWindow(opts)
+    opts = opts or {}
+    local title = opts.Title or "LinoriaUmbrella"
+    local pos = opts.Position or UDim2.fromScale(0.5,0.5)
+    local size = opts.Size or UDim2.new(0,840,0,520)
 
-    local Main = create("Frame", {
-        Name = "LU_Window",
-        AnchorPoint = Vector2.new(0.5,0.5),
-        Position = Pos,
-        Size = Size,
-        BackgroundColor3 = STYLE.BG,
-        BorderSizePixel = 0,
-        ZIndex = 1000,
-        Parent = ScreenGui
-    })
+    local Main = create("Frame", {Name="LU_Main", AnchorPoint=Vector2.new(0.5,0.5), Position=pos, Size=size, BackgroundColor3=STYLE.BG, BorderSizePixel=0, Parent = ScreenGui})
+    create("UICorner", {Parent=Main, CornerRadius = UDim.new(0,10)})
+    Main.ClipsDescendants = false
+    Main.ZIndex = 2000
 
-    local Corner = create("UICorner", {Parent = Main, CornerRadius = UDim.new(0,8)})
-    local Header = create("Frame", {
-        BackgroundColor3 = STYLE.DARK,
-        Size = UDim2.new(1,0,0,36),
-        Parent = Main
-    })
-    create("UICorner", {Parent=Header, CornerRadius = UDim.new(0,6)})
+    local Header = create("Frame", {Name="Header", BackgroundColor3=STYLE.DARK, Size=UDim2.new(1,0,0,44), Parent=Main})
+    create("UICorner", {Parent=Header, CornerRadius = UDim.new(0,8)})
+    local TitleLabel = create("TextLabel", {Text=title, Font=STYLE.FONT, TextSize=20, TextColor3=STYLE.TEXT, BackgroundTransparency=1, Position=UDim2.new(0,14,0,8), Size=UDim2.new(1,-28,0,28), TextXAlignment=Enum.TextXAlignment.Left, Parent=Header})
 
-    local TitleLabel = create("TextLabel", {
-        Text = Title,
-        TextSize = 20,
-        Font = STYLE.FONT,
-        TextColor3 = STYLE.TEXT,
-        BackgroundTransparency = 1,
-        Position = UDim2.new(0,12,0,0),
-        Size = UDim2.new(1,-24,1,0),
-        Parent = Header
-    })
+    local ButtonsFrame = create("Frame", {Parent=Header, BackgroundTransparency=1, Size=UDim2.new(0,90,1,0), Position=UDim2.new(1,-100,0,0)})
+    local function makeHeaderBtn(parent, text, x)
+        local btn = create("TextButton", {Text=text, BackgroundColor3=STYLE.ELEM, Size=UDim2.new(0,34,0,28), Position=UDim2.new(0,x,0,8), AutoButtonColor=false, Parent=parent})
+        create("UICorner", {Parent=btn, CornerRadius=UDim.new(0,6)})
+        btn.MouseEnter:Connect(function() tween(btn, {BackgroundColor3=STYLE.ACCENT}, 0.12) end)
+        btn.MouseLeave:Connect(function() tween(btn, {BackgroundColor3=STYLE.ELEM}, 0.12) end)
+        return btn
+    end
+    local MinBtn = makeHeaderBtn(ButtonsFrame, "-", 0)
+    local CloseBtn = makeHeaderBtn(ButtonsFrame, "x", 40)
+    CloseBtn.MouseButton1Click:Connect(function() Main:Destroy() end)
+    MinBtn.MouseButton1Click:Connect(function() local c = Main:FindFirstChild("Content"); if c then c.Visible = not c.Visible end end)
 
-    -- Left: categories; Right: module/settings area
-    local Left = create("Frame", {
-        BackgroundColor3 = STYLE.DARK,
-        Position = UDim2.new(0,8,0,46),
-        Size = UDim2.new(0,200,1,-54),
-        Parent = Main
-    })
-    create("UICorner", {Parent=Left, CornerRadius = UDim.new(0,6)})
+    local Content = create("Frame", {Name="Content", BackgroundTransparency=1, Position=UDim2.new(0,12,0,54), Size=UDim2.new(1,-24,1,-66), Parent=Main})
+    local Left = create("Frame", {Name="Left", BackgroundColor3=STYLE.DARK, Size=UDim2.new(0,232,1,0), Parent=Content}); create("UICorner",{Parent=Left, CornerRadius=UDim.new(0,8)})
+    local Right = create("Frame", {Name="Right", BackgroundColor3=STYLE.ELEM, Position=UDim2.new(0,236,0,0), Size=UDim2.new(1,-236,1,0), Parent=Content}); create("UICorner",{Parent=Right, CornerRadius=UDim.new(0,8)})
 
-    local Right = create("Frame", {
-        BackgroundColor3 = STYLE.ELEM,
-        Position = UDim2.new(0,216,0,46),
-        Size = UDim2.new(1,-232,1,-54),
-        Parent = Main
-    })
-    create("UICorner", {Parent=Right, CornerRadius = UDim.new(0,6)})
+    local LeftScroll = create("ScrollingFrame", {Parent=Left, BackgroundTransparency=1, Size=UDim2.new(1,-12,1,-12), Position=UDim2.new(0,6,0,6), ScrollBarThickness=6})
+    local LeftLayout = create("UIListLayout", {Parent=LeftScroll}); LeftLayout.Padding = UDim.new(0,8)
+    local RightScroll = create("ScrollingFrame", {Parent=Right, BackgroundTransparency=1, Size=UDim2.new(1,-12,1,-12), Position=UDim2.new(0,6,0,6), ScrollBarThickness=6})
+    local RightLayout = create("UIListLayout", {Parent=RightScroll}); RightLayout.Padding = UDim.new(0,10)
 
-    -- Layout containers
-    local CatList = create("ScrollingFrame", {
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1,0,1,0),
-        Parent = Left,
-        ScrollBarThickness = 4
-    })
-    local CatLayout = create("UIListLayout", {Parent = CatList, Padding = UDim.new(0,6), SortOrder = Enum.SortOrder.LayoutOrder})
-
-    local ModuleArea = create("Frame", {BackgroundTransparency = 1, Size = UDim2.new(1,0,1,0), Parent = Right})
-    local ModuleScroll = create("ScrollingFrame", {Parent = ModuleArea, BackgroundTransparency = 1, Size = UDim2.new(1,0,1,0), ScrollBarThickness = 4})
-    local ModuleLayout = create("UIListLayout", {Parent = ModuleScroll, Padding = UDim.new(0,6)})
-
-    -- window object to return
-    local Window = {
-        Main = Main,
-        Left = Left,
-        Right = Right,
-        CatList = CatList,
-        ModuleArea = ModuleArea,
-        Tabs = {},
-    }
-
-    -- drag
+    -- Dragging
     do
-        local dragging = false
-        local offset = Vector2.new(0,0)
+        local dragging = false; local dragOffset = Vector2.new(0,0)
         Header.InputBegan:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1 then
                 dragging = true
-                offset = Vector2.new(input.Position.X - Main.AbsolutePosition.X, input.Position.Y - Main.AbsolutePosition.Y)
-                input.Changed:Connect(function()
-                    if input.UserInputState == Enum.UserInputState.End then dragging = false end
-                end)
+                local mp = input.Position; local ap = Main.AbsolutePosition
+                dragOffset = Vector2.new(mp.X - ap.X, mp.Y - ap.Y)
+                input.Changed:Connect(function() if input.UserInputState == Enum.UserInputState.End then dragging = false end end)
             end
         end)
         Header.InputChanged:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.MouseMovement and dragging then
-                Main.Position = UDim2.fromOffset(input.Position.X - offset.X, input.Position.Y - offset.Y)
+                local mp = input.Position
+                Main.Position = UDim2.fromOffset(mp.X - dragOffset.X, mp.Y - dragOffset.Y)
             end
         end)
     end
 
-    -- API: AddTab (category on left)
+    local Window = {
+        Main = Main, Header = Header, Left = Left, LeftScroll = LeftScroll, LeftLayout = LeftLayout,
+        Right = Right, RightScroll = RightScroll, RightLayout = RightLayout,
+        Tabs = {}, Modules = {}
+    }
+
+    -- AddTab (category entry left + container on right)
     function Window:AddTab(name)
-        local btn = create("TextButton", {
-            Text = name,
-            Size = UDim2.new(1,-12,0,34),
-            Position = UDim2.new(0,6,0,0),
-            BackgroundColor3 = STYLE.DARK,
-            BorderSizePixel = 0,
-            AutoButtonColor = false,
-            Parent = CatList
-        })
-        create("UICorner", {Parent=btn, CornerRadius = UDim.new(0,6)})
-        local txt = btn
+        name = tostring(name or "Tab")
+        -- left button
+        local btn = create("TextButton", {Text=name, Font=Enum.Font.GothamBold, TextSize=16, TextColor3=STYLE.TEXT, BackgroundColor3=STYLE.DARK, Size=UDim2.new(1,-12,0,38), Parent=LeftScroll, AutoButtonColor=false})
+        create("UICorner", {Parent=btn, CornerRadius=UDim.new(0,6)})
+        btn.MouseEnter:Connect(function() tween(btn, {BackgroundColor3=STYLE.ELEM}, 0.12) end)
+        btn.MouseLeave:Connect(function() tween(btn, {BackgroundColor3=STYLE.DARK}, 0.12) end)
 
-        btn.MouseEnter:Connect(function() tween(btn, {BackgroundColor3 = STYLE.ELEM}, 0.12) end)
-        btn.MouseLeave:Connect(function() tween(btn, {BackgroundColor3 = STYLE.DARK}, 0.12) end)
+        -- right content container
+        local container = create("Frame", {Size=UDim2.new(1,0,0,0), BackgroundTransparency=1, Parent=RightScroll})
+        local layout = create("UIListLayout", {Parent=container}); layout.Padding = UDim.new(0,10)
 
-        -- content container for this tab
-        local content = create("Frame", {BackgroundTransparency = 1, Size = UDim2.new(1,0,0,0), Parent = ModuleScroll})
-        local contLayout = create("UIListLayout", {Parent = content, Padding = UDim.new(0,8)})
-
-        function Window:ShowTab()
-            for _, c in pairs(ModuleScroll:GetChildren()) do
-                if c ~= content and c:IsA("Frame") then c.Visible = false end
-            end
-            content.Visible = true
-            -- adjust canvas
-            ModuleScroll.CanvasSize = UDim2.new(0,0,0,contLayout.AbsoluteContentSize.Y)
-        end
-
+        -- clicking shows this tab
         btn.MouseButton1Click:Connect(function()
-            Window:ShowTab()
+            for _, c in pairs(RightScroll:GetChildren()) do
+                if c:IsA("Frame") then c.Visible = false end
+            end
+            container.Visible = true
+            RightScroll.CanvasSize = UDim2.new(0,0,0,layout.AbsoluteContentSize.Y)
         end)
+
+        -- Auto show first added
+        if #Window.Tabs == 0 then
+            container.Visible = true
+            RightScroll.CanvasSize = UDim2.new(0,0,0,layout.AbsoluteContentSize.Y)
+        else
+            container.Visible = false
+        end
 
         local TabObj = {
             Name = name,
-            Container = content,
-            AddToggle = function(_, id, info) return Window._AddToggle(content, id, info) end,
-            AddSlider = function(_, id, info) return Window._AddSlider(content, id, info) end,
-            AddDropdown = function(_, id, info) return Window._AddDropdown(content, id, info) end,
-            AddLabel = function(_, txt) return Window._AddLabel(content, txt) end,
-            AddButton = function(_, id, info) return Window._AddButton(content, id, info) end,
-            AddColorPicker = function(_, id, info) return Window._AddColorPicker(content, id, info) end,
-            -- more Linoria-compatible functions can be added here...
+            Button = btn,
+            Container = container,
+            Layout = layout
         }
 
-        Window.Tabs[name] = TabObj
+        -- add element methods (Linoria-compatible-ish)
+        function TabObj:AddLabel(text) return Library._AddLabel(container, text) end
+        function TabObj:AddButton(id, info) return Library._AddButton(container, id, info) end
+        function TabObj:AddToggle(id, info) return Library._AddToggle(container, id, info) end
+        function TabObj:AddSlider(id, info) return Library._AddSlider(container, id, info) end
+        function TabObj:AddDropdown(id, info) return Library._AddDropdown(container, id, info) end
+        function TabObj:AddColorPicker(id, info) return Library._AddColorPicker(container, id, info) end
+        function TabObj:AddKeyPicker(id, info) return Library._AddKeyPicker(container, id, info) end
+
+        Window.Tabs[#Window.Tabs+1] = TabObj
         return TabObj
     end
 
-    -- Internal element creators (Linoria-compatible signatures)
-    function Window._AddLabel(self, parent, text)
-        local lbl = create("TextLabel", {
-            Text = text,
-            Size = UDim2.new(1,-8,0,20),
-            BackgroundTransparency = 1,
-            TextColor3 = STYLE.TEXT,
-            Font = STYLE.FONT,
-            TextSize = 15,
-            TextXAlignment = Enum.TextXAlignment.Left,
-            Parent = parent
-        })
-        return lbl
-    end
-
-    function Window._AddToggle(self, parent, id, info)
-        info = info or {}
-        assert(info.Text, "AddToggle: Missing Text")
-        local outer = create("Frame", {Size = UDim2.new(1,-8,0,28), BackgroundColor3 = STYLE.ELEM, Parent = parent})
-        create("UICorner", {Parent = outer, CornerRadius = UDim.new(0,6)})
-        local label = create("TextLabel", {Text = info.Text, BackgroundTransparency = 1, TextColor3 = STYLE.TEXT, Font = STYLE.FONT, TextSize = 14, Position = UDim2.new(0,8,0,0), Size = UDim2.new(1,-60,1,0), Parent = outer})
-
-        local btn = create("TextButton", {Size = UDim2.new(0,44,0,20), Position = UDim2.new(1,-52,0,4), BackgroundColor3 = STYLE.DARK, AutoButtonColor = false, Parent = outer})
-        create("UICorner", {Parent = btn, CornerRadius = UDim.new(0,6)})
-
-        local state = info.Default or false
-        local function reflect()
-            if state then
-                tween(btn, {BackgroundColor3 = STYLE.ACCENT}, 0.14)
-                btn.Text = "ON"
-                btn.TextColor3 = Color3.new(1,1,1)
-            else
-                tween(btn, {BackgroundColor3 = STYLE.DARK}, 0.14)
-                btn.Text = "OFF"
-                btn.TextColor3 = STYLE.TEXT
-            end
-        end
-        reflect()
-
-        btn.MouseButton1Click:Connect(function()
-            state = not state
-            reflect()
-            if info.Callback then
-                pcall(info.Callback, state)
-            end
-            -- store in Toggles/Options for Linoria-compat
-            Toggles[id] = Toggles[id] or {}
-            Toggles[id].Value = state
-            if Options[id] then Options[id].Value = state end
-        end)
-
-        -- expose simple object compatible with Linoria
-        local ToggleObj = { Value = state, Type = "Toggle" }
-        function ToggleObj:SetValue(v) state = not not v; reflect(); if info.Callback then pcall(info.Callback, state) end end
-        function ToggleObj:OnChanged(f) ToggleObj.Changed = f; f(state) end
-
-        Options[id] = ToggleObj
-        Toggles[id] = ToggleObj
-
-        return ToggleObj
-    end
-
-    function Window._AddSlider(self, parent, id, info)
-        assert(info.Text and info.Min and info.Max and info.Rounding, "AddSlider: missing params")
-        local outer = create("Frame", {Size = UDim2.new(1,-8,0,44), BackgroundColor3 = STYLE.ELEM, Parent = parent})
-        create("UICorner",{Parent = outer, CornerRadius = UDim.new(0,6)})
-        local label = create("TextLabel", {Text = info.Text, BackgroundTransparency = 1, TextColor3 = STYLE.TEXT, Font = STYLE.FONT, TextSize = 14, Position = UDim2.new(0,8,0,4), Size = UDim2.new(1,-16,0,18), Parent = outer})
-        local barBg = create("Frame", {BackgroundColor3 = STYLE.DARK, Position = UDim2.new(0,8,0,26), Size = UDim2.new(1,-16,0,10), Parent = outer})
-        create("UICorner",{Parent = barBg, CornerRadius = UDim.new(0,4)})
-        local fill = create("Frame", {BackgroundColor3 = STYLE.ACCENT, Size = UDim2.new( (info.Default - info.Min)/(info.Max - info.Min), 0, 1, 0), Parent = barBg})
-        create("UICorner",{Parent = fill, CornerRadius = UDim.new(0,4)})
-
-        local dragging=false
-        barBg.InputBegan:Connect(function(input)
-            if input.UserInputType==Enum.UserInputType.MouseButton1 then
-                dragging=true
-            end
-        end)
-        UserInputService.InputEnded:Connect(function(input) if input.UserInputType==Enum.UserInputType.MouseButton1 then dragging=false end end)
-        UserInputService.InputChanged:Connect(function(input)
-            if dragging and input.UserInputType==Enum.UserInputType.MouseMovement then
-                local rel = math.clamp((input.Position.X - barBg.AbsolutePosition.X) / barBg.AbsoluteSize.X, 0, 1)
-                fill.Size = UDim2.new(rel,0,1,0)
-                local value = info.Min + (info.Max - info.Min) * rel
-                value = math.floor(value / info.Rounding + 0.5) * info.Rounding
-                if info.Callback then pcall(info.Callback, value) end
-                Options[id] = Options[id] or {}
-                Options[id].Value = value
-            end
-        end)
-
-        local SliderObj = { Value = info.Default or info.Min, Type = "Slider" }
-        function SliderObj:SetValue(v)
-            local rel = math.clamp((v - info.Min)/(info.Max - info.Min), 0,1)
-            fill.Size = UDim2.new(rel,0,1,0)
-            SliderObj.Value = v
-            if info.Callback then pcall(info.Callback, v) end
-        end
-        Options[id] = SliderObj
-        return SliderObj
-    end
-
-    function Window._AddDropdown(self, parent, id, info)
-        assert(info.Values, "AddDropdown: Missing Values")
-        local outer = create("Frame", {Size = UDim2.new(1,-8,0,34), BackgroundColor3 = STYLE.ELEM, Parent = parent})
-        create("UICorner", {Parent = outer, CornerRadius = UDim.new(0,6)})
-        local label = create("TextLabel", {Text = info.Text or "Dropdown", BackgroundTransparency = 1, TextColor3 = STYLE.TEXT, Font = STYLE.FONT, TextSize = 14, Position = UDim2.new(0,8,0,0), Size = UDim2.new(1,-120,1,0), Parent = outer})
-
-        local button = create("TextButton", {Size = UDim2.new(0,110,0,24), Position = UDim2.new(1,-118,0,5), BackgroundColor3 = STYLE.DARK, AutoButtonColor=false, Parent = outer})
-        create("UICorner",{Parent=button, CornerRadius = UDim.new(0,6)})
-        local sel = create("TextLabel", {Text = info.Default or "--", BackgroundTransparency = 1, TextColor3 = STYLE.TEXT, Font = STYLE.FONT, TextSize = 14, Size = UDim2.new(1,-8,1,0), Position = UDim2.new(0,6,0,0), Parent = button})
-
-        local menu = create("Frame", {Size = UDim2.new(0,130,0,0), BackgroundColor3 = STYLE.DARK, Visible = false, Parent = ScreenGui})
-        create("UICorner",{Parent=menu, CornerRadius = UDim.new(0,6)})
-        local menuList = create("UIListLayout", {Parent = menu, Padding = UDim.new(0,4)})
-
-        local function rebuild()
-            for _,c in pairs(menu:GetChildren()) do
-                if c:IsA("TextButton") then c:Destroy() end
-            end
-            local y=6
-            for i,v in ipairs(info.Values) do
-                local opt = create("TextButton", {Text = v, Size = UDim2.new(1,-12,0,26), Position = UDim2.new(0,6,0,y), BackgroundColor3 = STYLE.DARK, Parent = menu})
-                create("UICorner",{Parent=opt, CornerRadius = UDim.new(0,6)})
-                opt.MouseEnter:Connect(function() tween(opt, {BackgroundColor3 = STYLE.ELEM}, 0.12) end)
-                opt.MouseLeave:Connect(function() tween(opt, {BackgroundColor3 = STYLE.DARK}, 0.12) end)
-                opt.MouseButton1Click:Connect(function()
-                    sel.Text = v
-                    menu.Visible = false
-                    if info.Callback then pcall(info.Callback, v) end
-                    Options[id] = Options[id] or {}
-                    Options[id].Value = v
-                end)
-                y = y + 32
-            end
-            menu.Size = UDim2.new(0,140,0, y)
-        end
-        rebuild()
-
-        button.MouseButton1Click:Connect(function()
-            menu.Position = UDim2.fromOffset(button.AbsolutePosition.X, button.AbsolutePosition.Y + button.AbsoluteSize.Y + 6)
-            menu.Visible = not menu.Visible
-        end)
-
-        local DDObj = { Value = info.Default or nil, Type = "Dropdown" }
-        function DDObj:SetValue(v)
-            if table.find(info.Values, v) then
-                sel.Text = v
-                DDObj.Value = v
-                if info.Callback then pcall(info.Callback, v) end
-            end
-        end
-        Options[id] = DDObj
-        return DDObj
-    end
-
-    function Window._AddButton(self, parent, id, info)
-        local bframe = create("TextButton", {Text = info.Text or "Button", Size = UDim2.new(1,-8,0,30), BackgroundColor3 = STYLE.ACCENT, Parent = parent})
-        create("UICorner",{Parent=bframe, CornerRadius = UDim.new(0,6)})
-        bframe.MouseEnter:Connect(function() tween(bframe, {BackgroundColor3 = STYLE.ELEM}, 0.12) end)
-        bframe.MouseLeave:Connect(function() tween(bframe, {BackgroundColor3 = STYLE.ACCENT}, 0.12) end)
-        bframe.MouseButton1Click:Connect(function()
-            if info.Callback then pcall(info.Callback) end
-        end)
-        return bframe
-    end
-
-    -- finalize window object
     Library.Windows[#Library.Windows+1] = Window
     return Window
 end
 
--- Public API
-return {
+-- Basic UI element creators (internal)
+
+-- Label
+function Library._AddLabel(parent, text)
+    local lbl = create("TextLabel", {Text=tostring(text or ""), BackgroundTransparency=1, TextColor3=STYLE.TEXT, Font=STYLE.FONT, TextSize=15, Size=UDim2.new(1,-8,0,20), TextXAlignment=Enum.TextXAlignment.Left, Parent=parent})
+    return lbl
+end
+
+-- Button
+function Library._AddButton(parent, id, info)
+    info = info or {}
+    local btn = create("TextButton", {Text = info.Text or "Button", Size = UDim2.new(1,-8,0,34), BackgroundColor3 = STYLE.ACCENT, Parent = parent, AutoButtonColor=false})
+    create("UICorner", {Parent=btn, CornerRadius=UDim.new(0,8)})
+    btn.MouseEnter:Connect(function() tween(btn, {BackgroundColor3 = STYLE.ELEM}, 0.12) end)
+    btn.MouseLeave:Connect(function() tween(btn, {BackgroundColor3 = STYLE.ACCENT}, 0.12) end)
+    btn.MouseButton1Click:Connect(function() if info.Callback then pcall(info.Callback) end end)
+    return btn
+end
+
+-- Toggle
+function Library._AddToggle(parent, id, info)
+    info = info or {}
+    assert(info.Text, "Toggle requires Text")
+
+    local box = create("Frame", {Size=UDim2.new(1,-8,0,34), BackgroundColor3=STYLE.ELEM, Parent=parent})
+    create("UICorner", {Parent=box, CornerRadius=UDim.new(0,8)})
+    local label = create("TextLabel", {Text=info.Text, BackgroundTransparency=1, TextColor3=STYLE.TEXT, Font=STYLE.FONT, TextSize=14, Position=UDim2.new(0,8,0,0), Size=UDim2.new(1,-80,1,0), Parent=box})
+    local btn = create("TextButton", {Size=UDim2.new(0,56,0,22), Position=UDim2.new(1,-68,0,6), BackgroundColor3=STYLE.DARK, AutoButtonColor=false, Parent=box})
+    create("UICorner", {Parent=btn, CornerRadius=UDim.new(0,6)})
+    local state = (info.Default == true)
+    local function reflect()
+        if state then tween(btn, {BackgroundColor3=STYLE.ACCENT}, 0.12) btn.Text="ON" btn.TextColor3=Color3.new(1,1,1) else tween(btn, {BackgroundColor3=STYLE.DARK}, 0.12) btn.Text="OFF" btn.TextColor3=STYLE.SUBTEXT end
+    end
+    reflect()
+    btn.MouseButton1Click:Connect(function()
+        state = not state
+        reflect()
+        -- store API objects
+        Options[id] = Options[id] or {}
+        Options[id].Value = state
+        Toggles[id] = Options[id]
+        if info.Callback then pcall(info.Callback, state) end
+        -- save
+        saved_data[id] = saved_data[id] or {}
+        saved_data[id].value = state
+        Save.save(saved_data)
+    end)
+
+    local ToggleObj = { Value = state, Type = "Toggle" }
+    function ToggleObj:SetValue(v) state = not not v; reflect(); if info.Callback then pcall(info.Callback, state) end end
+    function ToggleObj:OnChanged(f) ToggleObj.Changed = f; f(state) end
+
+    Options[id] = ToggleObj; Toggles[id] = ToggleObj
+    -- load saved
+    if saved_data[id] and saved_data[id].value ~= nil then ToggleObj:SetValue(saved_data[id].value) end
+
+    return ToggleObj
+end
+
+-- Slider
+function Library._AddSlider(parent, id, info)
+    info = info or {}
+    assert(info.Text and info.Min and info.Max and info.Rounding, "Slider missing params")
+    local default = info.Default or info.Min
+
+    local box = create("Frame", {Size=UDim2.new(1,-8,0,54), BackgroundColor3=STYLE.ELEM, Parent=parent})
+    create("UICorner", {Parent=box, CornerRadius=UDim.new(0,8)})
+    local lbl = create("TextLabel", {Text=info.Text, BackgroundTransparency=1, TextColor3=STYLE.TEXT, Font=STYLE.FONT, TextSize=14, Position=UDim2.new(0,8,0,4), Size=UDim2.new(1,-16,0,18), Parent=box})
+    local barBg = create("Frame", {Position=UDim2.new(0,8,0,28), Size=UDim2.new(1,-16,0,10), BackgroundColor3=STYLE.DARK, Parent=box})
+    create("UICorner", {Parent=barBg, CornerRadius=UDim.new(0,6)})
+    local fill = create("Frame", {Size=UDim2.new((default - info.Min)/(info.Max - info.Min),0,1,0), BackgroundColor3=STYLE.ACCENT, Parent=barBg})
+    create("UICorner", {Parent=fill, CornerRadius=UDim.new(0,6)})
+
+    local dragging = false
+    barBg.InputBegan:Connect(function(input) if input.UserInputType==Enum.UserInputType.MouseButton1 then dragging = true end end)
+    UserInputService.InputEnded:Connect(function(input) if input.UserInputType==Enum.UserInputType.MouseButton1 then dragging = false end end)
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType==Enum.UserInputType.MouseMovement then
+            local rel = math.clamp((input.Position.X - barBg.AbsolutePosition.X)/barBg.AbsoluteSize.X, 0, 1)
+            fill.Size = UDim2.new(rel,0,1,0)
+            local value = info.Min + (info.Max - info.Min) * rel
+            value = round(value, info.Rounding)
+            Options[id] = Options[id] or {}
+            Options[id].Value = value
+            if info.Callback then pcall(info.Callback, value) end
+            saved_data[id] = saved_data[id] or {}
+            saved_data[id].value = value
+            Save.save(saved_data)
+        end
+    end)
+
+    local SliderObj = { Value = default, Type = "Slider" }
+    function SliderObj:SetValue(v) local rel = math.clamp((v - info.Min)/(info.Max - info.Min),0,1); fill.Size = UDim2.new(rel,0,1,0); SliderObj.Value = v; if info.Callback then pcall(info.Callback, v) end end
+
+    Options[id] = SliderObj
+    -- load saved
+    if saved_data[id] and saved_data[id].value then SliderObj:SetValue(saved_data[id].value) end
+
+    return SliderObj
+end
+
+-- Dropdown
+function Library._AddDropdown(parent, id, info)
+    info = info or {}
+    assert(info.Values, "Dropdown needs Values table")
+
+    local box = create("Frame", {Size=UDim2.new(1,-8,0,34), BackgroundColor3=STYLE.ELEM, Parent=parent})
+    create("UICorner", {Parent=box, CornerRadius=UDim.new(0,8)})
+    local label = create("TextLabel", {Text=info.Text or "Dropdown", BackgroundTransparency=1, TextColor3=STYLE.TEXT, Font=STYLE.FONT, TextSize=14, Position=UDim2.new(0,8,0,0), Size=UDim2.new(1,-140,1,0), Parent=box})
+    local button = create("TextButton", {Size=UDim2.new(0,120,0,26), Position=UDim2.new(1,-128,0,4), BackgroundColor3=STYLE.DARK, AutoButtonColor=false, Parent=box})
+    create("UICorner", {Parent=button, CornerRadius=UDim.new(0,6)})
+    local sel = create("TextLabel", {Text = info.Default or "Select...", BackgroundTransparency=1, TextColor3=STYLE.SUBTEXT, Font=STYLE.FONT, TextSize=14, Size=UDim2.new(1,-12,1,0), Position=UDim2.new(0,6,0,0), Parent=button})
+
+    local menu = create("Frame", {Size=UDim2.new(0,140,0,0), BackgroundColor3=STYLE.DARK, Visible=false, Parent=ScreenGui})
+    create("UICorner", {Parent=menu, CornerRadius=UDim.new(0,6)})
+    local menuList = create("UIListLayout", {Parent=menu}); menuList.Padding = UDim.new(0,4)
+
+    local function rebuild()
+        for _,c in pairs(menu:GetChildren()) do if c:IsA("TextButton") then c:Destroy() end end
+        local y = 6
+        for i,v in ipairs(info.Values) do
+            local opt = create("TextButton", {Text=v, Size=UDim2.new(1,-12,0,26), Position=UDim2.new(0,6,0,y), BackgroundColor3=STYLE.DARK, Parent=menu, AutoButtonColor=false})
+            create("UICorner", {Parent=opt, CornerRadius=UDim.new(0,6)})
+            opt.MouseEnter:Connect(function() tween(opt, {BackgroundColor3=STYLE.ELEM}, 0.12) end)
+            opt.MouseLeave:Connect(function() tween(opt, {BackgroundColor3=STYLE.DARK}, 0.12) end)
+            opt.MouseButton1Click:Connect(function()
+                sel.Text = v; sel.TextColor3 = STYLE.TEXT
+                Options[id] = Options[id] or {}
+                Options[id].Value = v
+                if info.Callback then pcall(info.Callback, v) end
+                saved_data[id] = saved_data[id] or {}
+                saved_data[id].value = v
+                Save.save(saved_data)
+                menu.Visible = false
+            end)
+            if sel.Text == v then opt.BackgroundColor3 = STYLE.ELEM; opt.TextColor3 = STYLE.ACCENT end
+            y = y + 32
+        end
+        menu.Size = UDim2.new(0,140,0,y)
+    end
+    rebuild()
+    button.MouseButton1Click:Connect(function()
+        menu.Position = UDim2.fromOffset(button.AbsolutePosition.X, button.AbsolutePosition.Y + button.AbsoluteSize.Y + 6)
+        menu.Visible = not menu.Visible
+    end)
+
+    local DDObj = { Value = info.Default or nil, Type = "Dropdown" }
+    function DDObj:SetValue(v) if table.find(info.Values, v) then sel.Text = v; DDObj.Value = v; if info.Callback then pcall(info.Callback, v) end end end
+    Options[id] = DDObj
+    if saved_data[id] and saved_data[id].value then DDObj:SetValue(saved_data[id].value) end
+    return DDObj
+end
+
+-- ColorPicker (simple, usable)
+function Library._AddColorPicker(parent, id, info)
+    info = info or {}
+    assert(info.Title or info.Text, "ColorPicker needs Title/Text")
+    local default = info.Default or Color3.fromRGB(255,255,255)
+    local box = create("Frame", {Size=UDim2.new(1,-8,0,40), BackgroundColor3=STYLE.ELEM, Parent=parent})
+    create("UICorner", {Parent=box, CornerRadius=UDim.new(0,8)})
+    local label = create("TextLabel", {Text=info.Title or info.Text, BackgroundTransparency=1, TextColor3=STYLE.TEXT, Font=STYLE.FONT, TextSize=14, Position=UDim2.new(0,8,0,6), Size=UDim2.new(1,-80,0,18), Parent=box})
+    local display = create("Frame", {Size=UDim2.new(0,36,0,24), Position=UDim2.new(1,-52,0,8), BackgroundColor3=default, Parent=box})
+    create("UICorner", {Parent=display, CornerRadius=UDim.new(0,6)})
+    local pickerFrame = create("Frame", {Visible=false, BackgroundColor3=STYLE.DARK, Size=UDim2.new(0,240,0,220), Parent=ScreenGui})
+    create("UICorner", {Parent=pickerFrame, CornerRadius=UDim.new(0,8)})
+    -- small simple hue slider + preview + hex box (not full featured like Linoria but usable)
+    local satv = create("ImageLabel", {Size=UDim2.new(0,200,0,200), Position=UDim2.new(0,10,0,10), Image="rbxassetid://4155801252", BackgroundTransparency=1, Parent=pickerFrame})
+    local hue = create("Frame", {Size=UDim2.new(0,15,0,200), Position=UDim2.new(0,216,0,10), BackgroundColor3=Color3.new(1,1,1), Parent=pickerFrame})
+    local hexBox = create("TextBox", {Size=UDim2.new(1,-20,0,24), Position=UDim2.new(0,10,0,216), Text="#"..default:ToHex(), TextColor3=STYLE.TEXT, BackgroundColor3=STYLE.DARK, Parent=pickerFrame})
+    create("UICorner", {Parent=hexBox, CornerRadius=UDim.new(0,6)})
+    display.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            pickerFrame.Position = UDim2.fromOffset(display.AbsolutePosition.X, display.AbsolutePosition.Y + display.AbsoluteSize.Y + 6)
+            pickerFrame.Visible = not pickerFrame.Visible
+        end
+    end)
+    local ColorObj = { Value = default, Type = "ColorPicker" }
+    function ColorObj:SetValueRGB(col) display.BackgroundColor3 = col; ColorObj.Value = col; if info.Callback then pcall(info.Callback, col) end end
+    Options[id] = ColorObj
+    if saved_data[id] and saved_data[id].value then ColorObj:SetValueRGB(saved_data[id].value) end
+    return ColorObj
+end
+
+-- KeyPicker (basic: choose KeyCode or MB1/MB2, modes Toggle/Hold/Always)
+function Library._AddKeyPicker(parent, id, info)
+    info = info or {}
+    assert(info.Text, "KeyPicker needs Text")
+    local box = create("Frame", {Size=UDim2.new(1,-8,0,38), BackgroundColor3=STYLE.ELEM, Parent=parent})
+    create("UICorner", {Parent=box, CornerRadius=UDim.new(0,8)})
+    local label = create("TextLabel", {Text=info.Text, BackgroundTransparency=1, TextColor3=STYLE.TEXT, Font=STYLE.FONT, TextSize=14, Position=UDim2.new(0,8,0,6), Size=UDim2.new(1,-140,0,24), Parent=box})
+    local btn = create("TextButton", {Text=info.Default or "None", Size=UDim2.new(0,120,0,26), Position=UDim2.new(1,-136,0,6), BackgroundColor3=STYLE.DARK, Parent=box, AutoButtonColor=false})
+    create("UICorner", {Parent=btn, CornerRadius=UDim.new(0,6)})
+
+    local mode = info.Mode or "Toggle"
+    local key = info.Default or "None"
+
+    local KeyObj = { Value = key, Mode = mode, Type = "KeyPicker" }
+    function KeyObj:SetValue(k, m) KeyObj.Value = k; KeyObj.Mode = m or KeyObj.Mode; btn.Text = tostring(k); if info.Callback then pcall(info.Callback, k, KeyObj.Mode) end end
+    Options[id] = KeyObj
+    btn.MouseButton1Click:Connect(function()
+        btn.Text = "Press Key..."
+        local conn
+        conn = UserInputService.InputBegan:Connect(function(inp, gp)
+            if gp then return end
+            local code = inp.KeyCode and tostring(inp.KeyCode.Name) or (inp.UserInputType == Enum.UserInputType.MouseButton1 and "MB1") or (inp.UserInputType == Enum.UserInputType.MouseButton2 and "MB2") or "None"
+            KeyObj:SetValue(code)
+            conn:Disconnect()
+        end)
+    end)
+    if saved_data[id] and saved_data[id].value then KeyObj:SetValue(saved_data[id].value) end
+    return KeyObj
+end
+
+-- Return public API
+local API = {
     CreateWindow = function(...) return Library:CreateWindow(...) end,
     _internal = Library,
     Toggles = Toggles,
-    Options = Options
+    Options = Options,
+    Notify = notify,
+    Save = { load = Save.load, save = Save.save }
 }
+
+-- Auto-expose
+getgenv().LinoriaUmbrella = API
+
+-- Quick example (only if not used by user script) - commented out. Uncomment to auto-show sample UI.
+--[[
+local win = API.CreateWindow({Title="LinoriaUmbrella Demo"})
+local tab = win:AddTab("Main")
+tab:AddLabel("Example controls:")
+tab:AddToggle("DemoToggle", {Text="Demo Toggle", Default=false, Callback=function(v) API.Notify("DemoToggle "..tostring(v)) end})
+tab:AddSlider("DemoSlider", {Text="Demo Slider", Min=0, Max=100, Rounding=1, Default=50, Callback=function(v) API.Notify("Slider "..tostring(v)) end})
+tab:AddDropdown("DemoDD", {Text="Choose", Values={"A","B","C"}, Default="A", Callback=function(v) API.Notify("Selected "..v) end})
+tab:AddButton("DemoBtn", {Text="Click me", Callback=function() API.Notify("Clicked!") end})
+]]--
+
+return API
