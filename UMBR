@@ -757,8 +757,7 @@ end
 
 local function createButton(parent, setting, position)
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0, 260, 0, 40)
-
+    frame.Size = UDim2.new(0, 280, 0, 50)
     frame.Position = position
     frame.BackgroundTransparency = 1
     frame.ZIndex = parent.ZIndex + 1
@@ -819,8 +818,7 @@ end
 
 local function createTextField(parent, setting, position)
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0, 260, 0, 40)
-
+    frame.Size = UDim2.new(0, 280, 0, 50)
     frame.Position = position
     frame.BackgroundTransparency = 1
     frame.ZIndex = parent.ZIndex + 1
@@ -1389,7 +1387,7 @@ local function createToggleButton()
     
     local toggleButton = Instance.new("ImageButton")
     toggleButton.Name = "ToggleButton"
-    toggleButton.Size = UDim2.new(0, 40, 0, 40)
+    toggleButton.Size = UDim2.new(0, 50, 0, 50)
     toggleButton.Position = UDim2.new(0, 20, 0, 20)
     toggleButton.BackgroundTransparency = 1
     toggleButton.Image = "http://www.roblox.com/asset/?id=95285379105237"
@@ -1705,7 +1703,7 @@ categoryFrame.BackgroundTransparency = 0.2
     settingsContainer.Size = UDim2.new(0, 615, 0, 0)
     settingsContainer.Position = UDim2.new(0, 257, 0, 90)
     settingsContainer.BackgroundColor3 = Color3.fromRGB(18, 18, 20)
-    settingsContainer.BackgroundTransparency = 0.15
+settingsContainer.BackgroundTransparency = 0.15
 
     settingsContainer.ZIndex = mainFrame.ZIndex + 1
     settingsContainer.Parent = mainFrame
