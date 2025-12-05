@@ -465,14 +465,12 @@ if UmbrellaAPI and UmbrellaAPI.CreateSection then
     end
 end
 
--- Expose helper for manual use:
 local Adapter = {}
+
 Adapter.Attach = AttachLinoriaAPIToSection
 Adapter.CreateSection = CreateSection
 Adapter.Library = Library
 Adapter.UmbrellaAPI = UmbrellaAPI
 
--- Put into _G for easy access
-_G.Umbrella_Linoria = Adapter
-
 return Adapter
+
