@@ -1,476 +1,385 @@
--- Umbrella_Linoria.lua
--- Merged adapter: Linoria widgets (AddToggle/AddSlider/AddDropdown/AddColorPicker/AddKeyPicker + Registry)
--- integrated into Umbrella style/layout.
--- Sources: Linoria.txt + Umbrella.txt
--- DO NOT EDIT unless you know what you do. Backup your Umbrella.txt.
+-- LinoriaUmbrella.lua
+-- Hybrid: Linoria-style API with Umbrella-style visuals
+-- Drop this file into your scripts and require it or dofile it.
 
--- ======= basic services (use Umbrella's existing services if available) =======
-local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local TweenService = game:GetService("TweenService")
+local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
 local TextService = game:GetService("TextService")
+local CoreGui = game:GetService("CoreGui")
 
 local LocalPlayer = Players.LocalPlayer
-local Mouse = LocalPlayer and LocalPlayer:GetMouse()
 
--- If Umbrella already defines API/global variables, try to reuse them:
-local UmbrellaAPI = rawget(_G, "UmbrellaAPI") or rawget(_G, "API") or {}
+-- Basic protectgui (works with some exploit envs)
+local protectgui = protectgui or (syn and syn.protect_gui) or (function(g) pcall(function() g.Parent = CoreGui end) end)
 
--- Provide fallback ScreenGui (prefer Umbrella's main ScreenGui if exists)
-local ScreenGui = UmbrellaAPI.ScreenGui or (LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui") and Instance.new("ScreenGui") or Instance.new("ScreenGui"))
-if not ScreenGui.Parent then
-    ScreenGui.Name = "Umbrella_Linoria_ScreenGui"
-    ScreenGui.ResetOnSpawn = false
-    ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Global
-    ScreenGui.Parent = game:GetService("CoreGui")
+-- Globals
+getgenv().Toggles = getgenv().Toggles or {}
+local Toggles = getgenv().Toggles
+local Options = {}
+getgenv().Options = Options
+
+-- Colors/style (Umbrella inspired)
+local STYLE = {
+    ACCENT = Color3.fromRGB(255,75,75),
+    TEXT = Color3.fromRGB(200,200,200),
+    BG = Color3.fromRGB(20,20,22),
+    DARK = Color3.fromRGB(15,15,17),
+    ELEM = Color3.fromRGB(30,30,32),
+    OUTLINE = Color3.fromRGB(40,40,42),
+    FONT = Enum.Font.Gotham
+}
+
+-- Utility helpers
+local function tween(instance, props, t)
+    t = t or 0.18
+    local info = TweenInfo.new(t, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    local tw = TweenService:Create(instance, info, props)
+    tw:Play()
+    return tw
 end
 
--- ======= Linoria-like Library (slimmed but functional) =======
-local Library = {}
-Library.Registry = {}
-Library.RegistryMap = {}
-Library.HudRegistry = {}
-Library.Signals = {}
-Library.ScreenGui = ScreenGui
-
-Library.Font = Enum.Font.Code
-Library.FontColor = Color3.fromRGB(255,255,255)
-Library.MainColor = Color3.fromRGB(28,28,28)
-Library.BackgroundColor = Color3.fromRGB(20,20,20)
-Library.AccentColor = Color3.fromRGB(0,85,255)
-Library.OutlineColor = Color3.fromRGB(50,50,50)
-Library.AccentColorDark = (function(c) local h,s,v = Color3.toHSV(c); return Color3.fromHSV(h,s, math.max(v/1.5,0.1)) end)(Library.AccentColor)
-
--- util create
-function Library:Create(Class, Props)
-    local inst = (type(Class)=="string") and Instance.new(Class) or Class
-    if Props then
-        for k,v in pairs(Props) do
-            pcall(function() inst[k] = v end)
+local function create(class, props)
+    local inst = Instance.new(class)
+    if props then
+        for k,v in pairs(props) do
+            if pcall(function() inst[k] = v end) then end
         end
     end
     return inst
 end
 
-function Library:ApplyTextStroke(Inst)
-    Inst.TextStrokeTransparency = 1
-    local stroke = self:Create("UIStroke", {
-        Color = Color3.new(0,0,0);
-        Thickness = 1;
-        LineJoinMode = Enum.LineJoinMode.Miter;
-        Parent = Inst;
-    })
-end
+local ScreenGui = create("ScreenGui", {Name = "LinoriaUmbrellaUI", ZIndexBehavior = Enum.ZIndexBehavior.Sibling})
+protectgui(ScreenGui)
+ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
-function Library:AddToRegistry(Instance, Properties, IsHud)
-    local Data = { Instance = Instance, Properties = Properties or {}, Idx = #Library.Registry + 1 }
-    table.insert(Library.Registry, Data)
-    Library.RegistryMap[Instance] = Data
-    if IsHud then table.insert(Library.HudRegistry, Data) end
-end
+-- Main window factory
+local Library = {}
+Library.Windows = {}
 
-function Library:RemoveFromRegistry(Instance)
-    local Data = Library.RegistryMap[Instance]
-    if not Data then return end
-    for i=#Library.Registry,1,-1 do
-        if Library.Registry[i] == Data then table.remove(Library.Registry, i) end
-    end
-    for i=#Library.HudRegistry,1,-1 do
-        if Library.HudRegistry[i] == Data then table.remove(Library.HudRegistry, i) end
-    end
-    Library.RegistryMap[Instance] = nil
-end
+function Library:CreateWindow(config)
+    config = config or {}
+    local Title = config.Title or "LinoriaUmbrella"
+    local Pos = config.Position or UDim2.fromScale(0.5,0.5)
+    local Size = config.Size or UDim2.new(0,700,0,420)
 
-function Library:SafeCallback(fn, ...)
-    if not fn then return end
-    local ok, err = pcall(fn, ...)
-    if not ok then
-        -- try to show Umbrella notification if exists
-        if UmbrellaAPI and UmbrellaAPI.showNotification then
-            pcall(UmbrellaAPI.showNotification, "UI callback error: "..tostring(err), "error", 3)
-        end
-    end
-end
-
-function Library:MouseIsOverOpenedFrame()
-    for f,_ in pairs(Library.OpenedFrames or {}) do
-        local AbsPos, AbsSize = f.AbsolutePosition, f.AbsoluteSize
-        if Mouse.X >= AbsPos.X and Mouse.X <= AbsPos.X + AbsSize.X and Mouse.Y >= AbsPos.Y and Mouse.Y <= AbsPos.Y + AbsSize.Y then
-            return true
-        end
-    end
-    return false
-end
-
--- keep tracking opened frames (for color picker / dropdown)
-Library.OpenedFrames = {}
-
--- ======= Basic UI helpers (to match Umbrella layout) =======
-local function MakeDraggable(instance, cutoff)
-    instance.Active = true
-    instance.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            local mouse = game:GetService("Players").LocalPlayer:GetMouse()
-            local offset = Vector2.new(mouse.X - instance.AbsolutePosition.X, mouse.Y - instance.AbsolutePosition.Y)
-            if offset.Y > (cutoff or 40) then return end
-            while UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) do
-                instance.Position = UDim2.new(0, mouse.X - offset.X + (instance.Size.X.Offset * instance.AnchorPoint.X),
-                                          0, mouse.Y - offset.Y + (instance.Size.Y.Offset * instance.AnchorPoint.Y))
-                RunService.RenderStepped:Wait()
-            end
-        end
-    end)
-end
-
--- ======= ADAPTER: integrate Linoria widget functions into Umbrella sections =======
--- Expect Umbrella's structure: API, modules, tabs, sections. We'll augment Section objects by adding Linoria-style methods.
--- We'll search for typical Umbrella API locations and patch them. If not found, create a simple Section helper.
-
-local function findUmbrellaSectionsTable()
-    -- common names seen in Umbrella: API, mainFrame, modules etc.
-    if UmbrellaAPI and UmbrellaAPI.sections then
-        return UmbrellaAPI.sections
-    end
-    -- try to find _G.mainFrame and sections inside it
-    if _G and _G.mainFrame and _G.mainFrame:FindFirstChild("Content") then
-        return {} -- fallback; we'll provide Section creation utility
-    end
-    return nil
-end
-
--- Provide Section factory if Umbrella doesn't provide it
-local Sections = {}
-local function CreateSection(tabFrame, title)
-    local Section = {}
-    Section.Title = title or "Section"
-    Section.Container = Library:Create("Frame", {
-        BackgroundTransparency = 1;
-        Size = UDim2.new(1,0,0,0);
-        ZIndex = 1;
-        Parent = tabFrame or ScreenGui;
-    })
-    Library:Create("UIListLayout", { Padding = UDim.new(0,4); FillDirection = Enum.FillDirection.Vertical; SortOrder = Enum.SortOrder.LayoutOrder; Parent = Section.Container })
-    function Section:Resize() end -- placeholder
-    Sections[#Sections+1] = Section
-    return Section
-end
-
--- Make sure we have a simple Tab/Section API if Umbrella doesn't provide
-local function EnsureSection(obj)
-    if obj and obj.AddToggle and obj.AddSlider then return obj end
-    return CreateSection(obj, "Converted")
-end
-
--- ======= Copy-in Linoria functions (essential ones) =======
--- We'll implement: AddToggle, AddSlider, AddDropdown, AddColorPicker, AddKeyPicker, AddInput (textbox)
--- Implementations are adapted directly from Linoria sources but made to attach into Section.Container.
-
--- AddToggle
-local function Section_AddToggle(self, Info)
-    assert(Info and Info.Text, "AddToggle: Missing Text")
-    local Toggle = {
-        Value = Info.Default or false,
-        Type = "Toggle",
-        Callback = Info.Callback,
-        Addons = {}
-    }
-
-    local Container = self.Container
-    -- outer frame
-    local ToggleOuter = Library:Create("Frame", {
-        BackgroundColor3 = Color3.new(0,0,0),
-        BorderColor3 = Color3.new(0,0,0),
-        Size = UDim2.new(1, -4, 0, 18),
-        ZIndex = 5,
-        Parent = Container,
+    local Main = create("Frame", {
+        Name = "LU_Window",
+        AnchorPoint = Vector2.new(0.5,0.5),
+        Position = Pos,
+        Size = Size,
+        BackgroundColor3 = STYLE.BG,
+        BorderSizePixel = 0,
+        ZIndex = 1000,
+        Parent = ScreenGui
     })
 
-    local ToggleInner = Library:Create("Frame", {
-        BackgroundColor3 = Library.MainColor,
-        BorderColor3 = Library.OutlineColor,
-        BorderMode = Enum.BorderMode.Inset,
-        Size = UDim2.new(0, 13, 0, 13),
-        Position = UDim2.new(0, 4, 0, 2),
-        ZIndex = 6,
-        Parent = ToggleOuter,
+    local Corner = create("UICorner", {Parent = Main, CornerRadius = UDim.new(0,8)})
+    local Header = create("Frame", {
+        BackgroundColor3 = STYLE.DARK,
+        Size = UDim2.new(1,0,0,36),
+        Parent = Main
     })
+    create("UICorner", {Parent=Header, CornerRadius = UDim.new(0,6)})
 
-    Library:AddToRegistry(ToggleInner, { BackgroundColor3 = "MainColor"; BorderColor3 = "OutlineColor" })
-
-    local Label = Library:Create("TextLabel", {
+    local TitleLabel = create("TextLabel", {
+        Text = Title,
+        TextSize = 20,
+        Font = STYLE.FONT,
+        TextColor3 = STYLE.TEXT,
         BackgroundTransparency = 1,
-        Text = Info.Text,
-        Font = Library.Font,
-        TextSize = 14,
-        TextColor3 = Library.FontColor,
-        Position = UDim2.new(0, 26, 0, 0),
-        Size = UDim2.new(1, -26, 1, 0),
-        TextXAlignment = Enum.TextXAlignment.Left,
-        ZIndex = 6,
-        Parent = ToggleOuter,
+        Position = UDim2.new(0,12,0,0),
+        Size = UDim2.new(1,-24,1,0),
+        Parent = Header
     })
-    Library:ApplyTextStroke(Label)
-    Library:AddToRegistry(Label, { TextColor3 = "FontColor" })
 
-    local function Display()
-        ToggleInner.BackgroundColor3 = Toggle.Value and Library.AccentColor or Library.MainColor
-        ToggleInner.BorderColor3 = Toggle.Value and Library.AccentColorDark or Library.OutlineColor
-        Library.RegistryMap[ToggleInner].Properties.BackgroundColor3 = Toggle.Value and "AccentColor" or "MainColor"
-        Library.RegistryMap[ToggleInner].Properties.BorderColor3 = Toggle.Value and "AccentColorDark" or "OutlineColor"
-    end
+    -- Left: categories; Right: module/settings area
+    local Left = create("Frame", {
+        BackgroundColor3 = STYLE.DARK,
+        Position = UDim2.new(0,8,0,46),
+        Size = UDim2.new(0,200,1,-54),
+        Parent = Main
+    })
+    create("UICorner", {Parent=Left, CornerRadius = UDim.new(0,6)})
 
-    function Toggle:SetValue(val)
-        Toggle.Value = not not val
-        Display()
-        Library:SafeCallback(Toggle.Callback, Toggle.Value)
-    end
+    local Right = create("Frame", {
+        BackgroundColor3 = STYLE.ELEM,
+        Position = UDim2.new(0,216,0,46),
+        Size = UDim2.new(1,-232,1,-54),
+        Parent = Main
+    })
+    create("UICorner", {Parent=Right, CornerRadius = UDim.new(0,6)})
 
-    ToggleOuter.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 and not Library:MouseIsOverOpenedFrame() then
-            Toggle:SetValue(not Toggle.Value)
-            -- best-effort save integration
-            if UmbrellaAPI and UmbrellaAPI.AttemptSave then pcall(UmbrellaAPI.AttemptSave) end
-        end
-    end)
+    -- Layout containers
+    local CatList = create("ScrollingFrame", {
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1,0,1,0),
+        Parent = Left,
+        ScrollBarThickness = 4
+    })
+    local CatLayout = create("UIListLayout", {Parent = CatList, Padding = UDim.new(0,6), SortOrder = Enum.SortOrder.LayoutOrder})
 
-    Display()
-    return Toggle
-end
+    local ModuleArea = create("Frame", {BackgroundTransparency = 1, Size = UDim2.new(1,0,1,0), Parent = Right})
+    local ModuleScroll = create("ScrollingFrame", {Parent = ModuleArea, BackgroundTransparency = 1, Size = UDim2.new(1,0,1,0), ScrollBarThickness = 4})
+    local ModuleLayout = create("UIListLayout", {Parent = ModuleScroll, Padding = UDim.new(0,6)})
 
--- AddSlider
-local function Section_AddSlider(self, Info)
-    assert(Info and Info.Text and Info.Min ~= nil and Info.Max ~= nil and Info.Rounding ~= nil and Info.Default ~= nil, "AddSlider: missing params")
-    local Slider = {
-        Value = Info.Default,
-        Min = Info.Min,
-        Max = Info.Max,
-        Rounding = Info.Rounding,
-        Callback = Info.Callback,
-        Type = "Slider"
+    -- window object to return
+    local Window = {
+        Main = Main,
+        Left = Left,
+        Right = Right,
+        CatList = CatList,
+        ModuleArea = ModuleArea,
+        Tabs = {},
     }
 
-    local Container = self.Container
-    local Outer = Library:Create("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, -4, 0, 28), ZIndex = 5, Parent = Container })
-    local Label = Library:Create("TextLabel", { BackgroundTransparency = 1, Text = Info.Text.." ("..tostring(Slider.Value)..")", Font = Library.Font, TextSize = 14, TextColor3 = Library.FontColor, Size = UDim2.new(1,0,0,14), Parent = Outer })
-    Library:ApplyTextStroke(Label)
-    Library:AddToRegistry(Label, { TextColor3 = "FontColor" })
-
-    local Bar = Library:Create("Frame", { BackgroundColor3 = Color3.fromRGB(50,50,50), Size = UDim2.new(1,0,0,8), Position = UDim2.new(0,0,0,16), Parent = Outer })
-    Library:AddToRegistry(Bar, { BackgroundColor3 = "MainColor" })
-
-    local Fill = Library:Create("Frame", { BackgroundColor3 = Library.AccentColor, Size = UDim2.new( (Slider.Value - Slider.Min)/(Slider.Max - Slider.Min), 0, 1, 0 ), ZIndex = 7, Parent = Bar })
-    Library:AddToRegistry(Fill, { BackgroundColor3 = "AccentColor" })
-
-    local dragging = false
-    local function setValueFromX(x)
-        local rel = math.clamp(x / Bar.AbsoluteSize.X, 0, 1)
-        local val = Slider.Min + (Slider.Max - Slider.Min) * rel
-        if Slider.Rounding > 0 then
-            local fmt = "%."..tostring(Slider.Rounding).."f"
-            val = tonumber(string.format(fmt, val))
-        else
-            val = math.floor(val)
-        end
-        Slider.Value = val
-        Fill.Size = UDim2.new(rel, 0, 1, 0)
-        Label.Text = Info.Text.." ("..tostring(Slider.Value)..")"
-        Library:SafeCallback(Slider.Callback, Slider.Value)
+    -- drag
+    do
+        local dragging = false
+        local offset = Vector2.new(0,0)
+        Header.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                dragging = true
+                offset = Vector2.new(input.Position.X - Main.AbsolutePosition.X, input.Position.Y - Main.AbsolutePosition.Y)
+                input.Changed:Connect(function()
+                    if input.UserInputState == Enum.UserInputState.End then dragging = false end
+                end)
+            end
+        end)
+        Header.InputChanged:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseMovement and dragging then
+                Main.Position = UDim2.fromOffset(input.Position.X - offset.X, input.Position.Y - offset.Y)
+            end
+        end)
     end
 
-    Bar.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = true
-            setValueFromX(math.clamp(Mouse.X - Bar.AbsolutePosition.X, 0, Bar.AbsoluteSize.X))
+    -- API: AddTab (category on left)
+    function Window:AddTab(name)
+        local btn = create("TextButton", {
+            Text = name,
+            Size = UDim2.new(1,-12,0,34),
+            Position = UDim2.new(0,6,0,0),
+            BackgroundColor3 = STYLE.DARK,
+            BorderSizePixel = 0,
+            AutoButtonColor = false,
+            Parent = CatList
+        })
+        create("UICorner", {Parent=btn, CornerRadius = UDim.new(0,6)})
+        local txt = btn
+
+        btn.MouseEnter:Connect(function() tween(btn, {BackgroundColor3 = STYLE.ELEM}, 0.12) end)
+        btn.MouseLeave:Connect(function() tween(btn, {BackgroundColor3 = STYLE.DARK}, 0.12) end)
+
+        -- content container for this tab
+        local content = create("Frame", {BackgroundTransparency = 1, Size = UDim2.new(1,0,0,0), Parent = ModuleScroll})
+        local contLayout = create("UIListLayout", {Parent = content, Padding = UDim.new(0,8)})
+
+        function Window:ShowTab()
+            for _, c in pairs(ModuleScroll:GetChildren()) do
+                if c ~= content and c:IsA("Frame") then c.Visible = false end
+            end
+            content.Visible = true
+            -- adjust canvas
+            ModuleScroll.CanvasSize = UDim2.new(0,0,0,contLayout.AbsoluteContentSize.Y)
         end
-    end)
-    Bar.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
-    end)
-    UserInputService.InputChanged:Connect(function(input)
-        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-            setValueFromX(math.clamp(Mouse.X - Bar.AbsolutePosition.X, 0, Bar.AbsoluteSize.X))
-        end
-    end)
 
-    return Slider
-end
+        btn.MouseButton1Click:Connect(function()
+            Window:ShowTab()
+        end)
 
--- AddInput (TextBox)
-local function Section_AddInput(self, Info)
-    assert(Info and Info.Text, "AddInput: missing text")
-    local Container = self.Container
-    local Label = Library:Create("TextLabel", { BackgroundTransparency = 1, Text = Info.Text, Font = Library.Font, TextSize = 14, TextColor3 = Library.FontColor, Parent = Container })
-    Library:ApplyTextStroke(Label)
-    Library:AddToRegistry(Label, { TextColor3 = "FontColor" })
+        local TabObj = {
+            Name = name,
+            Container = content,
+            AddToggle = function(_, id, info) return Window._AddToggle(content, id, info) end,
+            AddSlider = function(_, id, info) return Window._AddSlider(content, id, info) end,
+            AddDropdown = function(_, id, info) return Window._AddDropdown(content, id, info) end,
+            AddLabel = function(_, txt) return Window._AddLabel(content, txt) end,
+            AddButton = function(_, id, info) return Window._AddButton(content, id, info) end,
+            AddColorPicker = function(_, id, info) return Window._AddColorPicker(content, id, info) end,
+            -- more Linoria-compatible functions can be added here...
+        }
 
-    local Outer = Library:Create("Frame", { BackgroundColor3 = Library.MainColor, Size = UDim2.new(1,-4,0,26), ZIndex = 6, Parent = Container })
-    Library:AddToRegistry(Outer, { BackgroundColor3 = "MainColor"; BorderColor3 = "OutlineColor" })
-    local Box = Library:Create("TextBox", { BackgroundTransparency = 1, Text = Info.Default or "", Font = Library.Font, TextColor3 = Library.FontColor, TextSize = 14, Parent = Outer })
-    Library:ApplyTextStroke(Box); Library:AddToRegistry(Box, { TextColor3 = "FontColor" })
-
-    Box.FocusLost:Connect(function(enter)
-        if enter then
-            if Info.Callback then pcall(Info.Callback, Box.Text) end
-        end
-    end)
-
-    return Box
-end
-
--- AddDropdown
-local function Section_AddDropdown(self, Info)
-    assert(Info and Info.Values, "AddDropdown: missing Values")
-    local Dropdown = { Values = Info.Values, Value = (Info.Multi and {}) or nil, Multi = Info.Multi, Callback = Info.Callback, Type = "Dropdown" }
-
-    local Container = self.Container
-    local Outer = Library:Create("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1,-4,0,20), ZIndex = 5, Parent = Container })
-    local ItemLabel = Library:Create("TextLabel", { BackgroundTransparency = 1, Text = Info.Text or "--", Font = Library.Font, TextSize = 14, TextColor3 = Library.FontColor, Parent = Outer })
-    Library:ApplyTextStroke(ItemLabel); Library:AddToRegistry(ItemLabel, { TextColor3 = "FontColor" })
-
-    -- dropdown list container (attached to ScreenGui)
-    local ListOuter = Library:Create("Frame", { BackgroundColor3 = Library.MainColor, BorderColor3 = Library.OutlineColor, Visible = false, ZIndex = 50, Parent = Library.ScreenGui })
-    Library:AddToRegistry(ListOuter, { BackgroundColor3 = "MainColor"; BorderColor3 = "OutlineColor" })
-    local Scrolling = Library:Create("ScrollingFrame", { BackgroundTransparency = 1, Size = UDim2.new(0, Outer.AbsoluteSize.X, 0, 120), CanvasSize = UDim2.new(0,0,0,0), Parent = ListOuter })
-    Library:Create("UIListLayout", { FillDirection = Enum.FillDirection.Vertical, Parent = Scrolling })
-
-    local function buildList()
-        for _,c in pairs(Scrolling:GetChildren()) do if not c:IsA("UIListLayout") then c:Destroy() end end
-        for i, val in ipairs(Dropdown.Values) do
-            local btn = Library:Create("TextLabel", { BackgroundTransparency = 1, Text = val, Font = Library.Font, TextColor3 = Library.FontColor, TextSize = 14, Size = UDim2.new(1,0,0,20), Parent = Scrolling })
-            Library:ApplyTextStroke(btn); Library:AddToRegistry(btn, { TextColor3 = "FontColor" })
-            btn.InputBegan:Connect(function(input)
-                if input.UserInputType == Enum.UserInputType.MouseButton1 then
-                    if Dropdown.Multi then
-                        if Dropdown.Value[val] then Dropdown.Value[val] = nil else Dropdown.Value[val] = true end
-                    else
-                        Dropdown.Value = (Dropdown.Value==val) and nil or val
-                        ListOuter.Visible = false
-                        Library.OpenedFrames[ListOuter] = nil
-                    end
-                    if Dropdown.Callback then pcall(Dropdown.Callback, Dropdown.Value) end
-                end
-            end)
-        end
-        Scrolling.CanvasSize = UDim2.fromOffset(0, #Dropdown.Values * 20)
+        Window.Tabs[name] = TabObj
+        return TabObj
     end
 
-    Outer.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 and not Library:MouseIsOverOpenedFrame() then
-            if ListOuter.Visible then
-                ListOuter.Visible = false; Library.OpenedFrames[ListOuter] = nil
+    -- Internal element creators (Linoria-compatible signatures)
+    function Window._AddLabel(self, parent, text)
+        local lbl = create("TextLabel", {
+            Text = text,
+            Size = UDim2.new(1,-8,0,20),
+            BackgroundTransparency = 1,
+            TextColor3 = STYLE.TEXT,
+            Font = STYLE.FONT,
+            TextSize = 15,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            Parent = parent
+        })
+        return lbl
+    end
+
+    function Window._AddToggle(self, parent, id, info)
+        info = info or {}
+        assert(info.Text, "AddToggle: Missing Text")
+        local outer = create("Frame", {Size = UDim2.new(1,-8,0,28), BackgroundColor3 = STYLE.ELEM, Parent = parent})
+        create("UICorner", {Parent = outer, CornerRadius = UDim.new(0,6)})
+        local label = create("TextLabel", {Text = info.Text, BackgroundTransparency = 1, TextColor3 = STYLE.TEXT, Font = STYLE.FONT, TextSize = 14, Position = UDim2.new(0,8,0,0), Size = UDim2.new(1,-60,1,0), Parent = outer})
+
+        local btn = create("TextButton", {Size = UDim2.new(0,44,0,20), Position = UDim2.new(1,-52,0,4), BackgroundColor3 = STYLE.DARK, AutoButtonColor = false, Parent = outer})
+        create("UICorner", {Parent = btn, CornerRadius = UDim.new(0,6)})
+
+        local state = info.Default or false
+        local function reflect()
+            if state then
+                tween(btn, {BackgroundColor3 = STYLE.ACCENT}, 0.14)
+                btn.Text = "ON"
+                btn.TextColor3 = Color3.new(1,1,1)
             else
-                ListOuter.Position = UDim2.fromOffset(Outer.AbsolutePosition.X, Outer.AbsolutePosition.Y + Outer.AbsoluteSize.Y + 2)
-                ListOuter.Size = UDim2.fromOffset(Outer.AbsoluteSize.X, math.min(#Dropdown.Values*20, 160))
-                ListOuter.Visible = true; Library.OpenedFrames[ListOuter] = true
-                buildList()
+                tween(btn, {BackgroundColor3 = STYLE.DARK}, 0.14)
+                btn.Text = "OFF"
+                btn.TextColor3 = STYLE.TEXT
             end
         end
-    end)
+        reflect()
 
-    return Dropdown
-end
+        btn.MouseButton1Click:Connect(function()
+            state = not state
+            reflect()
+            if info.Callback then
+                pcall(info.Callback, state)
+            end
+            -- store in Toggles/Options for Linoria-compat
+            Toggles[id] = Toggles[id] or {}
+            Toggles[id].Value = state
+            if Options[id] then Options[id].Value = state end
+        end)
 
--- AddColorPicker
-local function Section_AddColorPicker(self, Info)
-    assert(Info and Info.Default, "AddColorPicker: Missing default color")
-    local ColorPicker = { Value = Info.Default, Transparency = Info.Transparency or 0, Callback = Info.Callback, Type = "ColorPicker" }
+        -- expose simple object compatible with Linoria
+        local ToggleObj = { Value = state, Type = "Toggle" }
+        function ToggleObj:SetValue(v) state = not not v; reflect(); if info.Callback then pcall(info.Callback, state) end end
+        function ToggleObj:OnChanged(f) ToggleObj.Changed = f; f(state) end
 
-    local Container = self.Container
-    local DisplayFrame = Library:Create("Frame", { BackgroundColor3 = ColorPicker.Value, BorderColor3 = Library:GetDarkerColor and Library:GetDarkerColor(ColorPicker.Value) or Color3.new(0,0,0), Size = UDim2.new(0,28,0,14), ZIndex = 6, Parent = Container })
-    Library:AddToRegistry(DisplayFrame, { BackgroundColor3 = "MainColor"; BorderColor3 = "OutlineColor" })
+        Options[id] = ToggleObj
+        Toggles[id] = ToggleObj
 
-    -- minimal full picker: spawn a small picker window (simple hue slider + satvib area) on click
-    local PickerWindow = Library:Create("Frame", { BackgroundColor3 = Library.BackgroundColor, BorderColor3 = Library.OutlineColor, Size = UDim2.new(0,220,0,220), Visible = false, ZIndex = 60, Parent = Library.ScreenGui })
-    Library:AddToRegistry(PickerWindow, { BackgroundColor3 = "BackgroundColor"; BorderColor3 = "OutlineColor" })
-
-    DisplayFrame.InputBegan:Connect(function(inp)
-        if inp.UserInputType == Enum.UserInputType.MouseButton1 and not Library:MouseIsOverOpenedFrame() then
-            PickerWindow.Position = UDim2.fromOffset(DisplayFrame.AbsolutePosition.X, DisplayFrame.AbsolutePosition.Y + 18)
-            PickerWindow.Visible = not PickerWindow.Visible
-            Library.OpenedFrames[PickerWindow] = PickerWindow.Visible and true or nil
-        end
-    end)
-
-    -- Very small/simple picker: allow user to paste hex in a TextBox
-    local HexBox = Library:Create("TextBox", { Text = "#" .. ColorPicker.Value:ToHex(), BackgroundTransparency = 1, Font = Library.Font, TextColor3 = Library.FontColor, TextSize = 14, Size = UDim2.new(1,-8,0,20), Position = UDim2.new(0,4,0,4), Parent = PickerWindow })
-    Library:ApplyTextStroke(HexBox); Library:AddToRegistry(HexBox, { TextColor3 = "FontColor" })
-
-    HexBox.FocusLost:Connect(function(enter)
-        if not enter then return end
-        local success, col = pcall(function() return Color3.fromHex(HexBox.Text:gsub("#","")) end)
-        if success and typeof(col) == "Color3" then
-            ColorPicker.Value = col
-            DisplayFrame.BackgroundColor3 = col
-            if ColorPicker.Callback then pcall(ColorPicker.Callback, ColorPicker.Value) end
-        end
-    end)
-
-    return ColorPicker
-end
-
--- KeyPicker (basic)
-local function Section_AddKeyPicker(self, Info)
-    assert(Info and Info.Default, "AddKeyPicker: Missing default")
-    local KeyPicker = { Value = Info.Default, Mode = Info.Mode or "Toggle", Callback = Info.Callback, Type = "KeyPicker" }
-
-    local Container = self.Container
-    local PickOuter = Library:Create("Frame", { Size = UDim2.new(0,80,0,18), BackgroundColor3 = Library.MainColor, BorderColor3 = Library.OutlineColor, Parent = Container })
-    Library:AddToRegistry(PickOuter, { BackgroundColor3 = "MainColor"; BorderColor3 = "OutlineColor" })
-
-    local Label = Library:Create("TextLabel", { Text = KeyPicker.Value, BackgroundTransparency = 1, Font = Library.Font, TextColor3 = Library.FontColor, ZIndex = 8, Parent = PickOuter })
-    Library:ApplyTextStroke(Label); Library:AddToRegistry(Label, { TextColor3 = "FontColor" })
-
-    local picking = false
-    PickOuter.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 and not Library:MouseIsOverOpenedFrame() then
-            picking = true
-            Label.Text = "..."
-            local conn
-            conn = UserInputService.InputBegan:Connect(function(i)
-                if not picking then return end
-                local keyName = (i.UserInputType == Enum.UserInputType.Keyboard) and i.KeyCode.Name or (i.UserInputType == Enum.UserInputType.MouseButton1 and "MB1") or (i.UserInputType == Enum.UserInputType.MouseButton2 and "MB2") or tostring(i.UserInputType)
-                KeyPicker.Value = keyName
-                Label.Text = keyName
-                Library:SafeCallback(KeyPicker.Callback, KeyPicker.Value)
-                picking = false
-                conn:Disconnect()
-            end)
-        end
-    end)
-
-    return KeyPicker
-end
-
--- Add functions to Section metatable / object
-local function AttachLinoriaAPIToSection(section)
-    section = EnsureSection(section)
-    section.AddToggle = function(_, info) return Section_AddToggle(section, info) end
-    section.AddSlider = function(_, info) return Section_AddSlider(section, info) end
-    section.AddDropdown = function(_, info) return Section_AddDropdown(section, info) end
-    section.AddColorPicker = function(_, info) return Section_AddColorPicker(section, info) end
-    section.AddKeyPicker = function(_, info) return Section_AddKeyPicker(section, info) end
-    section.AddInput = function(_, info) return Section_AddInput(section, info) end
-    return section
-end
-
--- ======= Try to auto-patch Umbrella if possible =======
-if UmbrellaAPI and UmbrellaAPI.CreateSection then
-    -- Patch Umbrella sections so AddX methods available
-    local oldCreateSection = UmbrellaAPI.CreateSection
-    UmbrellaAPI.CreateSection = function(...)
-        local sec = oldCreateSection(...)
-        AttachLinoriaAPIToSection(sec)
-        return sec
+        return ToggleObj
     end
+
+    function Window._AddSlider(self, parent, id, info)
+        assert(info.Text and info.Min and info.Max and info.Rounding, "AddSlider: missing params")
+        local outer = create("Frame", {Size = UDim2.new(1,-8,0,44), BackgroundColor3 = STYLE.ELEM, Parent = parent})
+        create("UICorner",{Parent = outer, CornerRadius = UDim.new(0,6)})
+        local label = create("TextLabel", {Text = info.Text, BackgroundTransparency = 1, TextColor3 = STYLE.TEXT, Font = STYLE.FONT, TextSize = 14, Position = UDim2.new(0,8,0,4), Size = UDim2.new(1,-16,0,18), Parent = outer})
+        local barBg = create("Frame", {BackgroundColor3 = STYLE.DARK, Position = UDim2.new(0,8,0,26), Size = UDim2.new(1,-16,0,10), Parent = outer})
+        create("UICorner",{Parent = barBg, CornerRadius = UDim.new(0,4)})
+        local fill = create("Frame", {BackgroundColor3 = STYLE.ACCENT, Size = UDim2.new( (info.Default - info.Min)/(info.Max - info.Min), 0, 1, 0), Parent = barBg})
+        create("UICorner",{Parent = fill, CornerRadius = UDim.new(0,4)})
+
+        local dragging=false
+        barBg.InputBegan:Connect(function(input)
+            if input.UserInputType==Enum.UserInputType.MouseButton1 then
+                dragging=true
+            end
+        end)
+        UserInputService.InputEnded:Connect(function(input) if input.UserInputType==Enum.UserInputType.MouseButton1 then dragging=false end end)
+        UserInputService.InputChanged:Connect(function(input)
+            if dragging and input.UserInputType==Enum.UserInputType.MouseMovement then
+                local rel = math.clamp((input.Position.X - barBg.AbsolutePosition.X) / barBg.AbsoluteSize.X, 0, 1)
+                fill.Size = UDim2.new(rel,0,1,0)
+                local value = info.Min + (info.Max - info.Min) * rel
+                value = math.floor(value / info.Rounding + 0.5) * info.Rounding
+                if info.Callback then pcall(info.Callback, value) end
+                Options[id] = Options[id] or {}
+                Options[id].Value = value
+            end
+        end)
+
+        local SliderObj = { Value = info.Default or info.Min, Type = "Slider" }
+        function SliderObj:SetValue(v)
+            local rel = math.clamp((v - info.Min)/(info.Max - info.Min), 0,1)
+            fill.Size = UDim2.new(rel,0,1,0)
+            SliderObj.Value = v
+            if info.Callback then pcall(info.Callback, v) end
+        end
+        Options[id] = SliderObj
+        return SliderObj
+    end
+
+    function Window._AddDropdown(self, parent, id, info)
+        assert(info.Values, "AddDropdown: Missing Values")
+        local outer = create("Frame", {Size = UDim2.new(1,-8,0,34), BackgroundColor3 = STYLE.ELEM, Parent = parent})
+        create("UICorner", {Parent = outer, CornerRadius = UDim.new(0,6)})
+        local label = create("TextLabel", {Text = info.Text or "Dropdown", BackgroundTransparency = 1, TextColor3 = STYLE.TEXT, Font = STYLE.FONT, TextSize = 14, Position = UDim2.new(0,8,0,0), Size = UDim2.new(1,-120,1,0), Parent = outer})
+
+        local button = create("TextButton", {Size = UDim2.new(0,110,0,24), Position = UDim2.new(1,-118,0,5), BackgroundColor3 = STYLE.DARK, AutoButtonColor=false, Parent = outer})
+        create("UICorner",{Parent=button, CornerRadius = UDim.new(0,6)})
+        local sel = create("TextLabel", {Text = info.Default or "--", BackgroundTransparency = 1, TextColor3 = STYLE.TEXT, Font = STYLE.FONT, TextSize = 14, Size = UDim2.new(1,-8,1,0), Position = UDim2.new(0,6,0,0), Parent = button})
+
+        local menu = create("Frame", {Size = UDim2.new(0,130,0,0), BackgroundColor3 = STYLE.DARK, Visible = false, Parent = ScreenGui})
+        create("UICorner",{Parent=menu, CornerRadius = UDim.new(0,6)})
+        local menuList = create("UIListLayout", {Parent = menu, Padding = UDim.new(0,4)})
+
+        local function rebuild()
+            for _,c in pairs(menu:GetChildren()) do
+                if c:IsA("TextButton") then c:Destroy() end
+            end
+            local y=6
+            for i,v in ipairs(info.Values) do
+                local opt = create("TextButton", {Text = v, Size = UDim2.new(1,-12,0,26), Position = UDim2.new(0,6,0,y), BackgroundColor3 = STYLE.DARK, Parent = menu})
+                create("UICorner",{Parent=opt, CornerRadius = UDim.new(0,6)})
+                opt.MouseEnter:Connect(function() tween(opt, {BackgroundColor3 = STYLE.ELEM}, 0.12) end)
+                opt.MouseLeave:Connect(function() tween(opt, {BackgroundColor3 = STYLE.DARK}, 0.12) end)
+                opt.MouseButton1Click:Connect(function()
+                    sel.Text = v
+                    menu.Visible = false
+                    if info.Callback then pcall(info.Callback, v) end
+                    Options[id] = Options[id] or {}
+                    Options[id].Value = v
+                end)
+                y = y + 32
+            end
+            menu.Size = UDim2.new(0,140,0, y)
+        end
+        rebuild()
+
+        button.MouseButton1Click:Connect(function()
+            menu.Position = UDim2.fromOffset(button.AbsolutePosition.X, button.AbsolutePosition.Y + button.AbsoluteSize.Y + 6)
+            menu.Visible = not menu.Visible
+        end)
+
+        local DDObj = { Value = info.Default or nil, Type = "Dropdown" }
+        function DDObj:SetValue(v)
+            if table.find(info.Values, v) then
+                sel.Text = v
+                DDObj.Value = v
+                if info.Callback then pcall(info.Callback, v) end
+            end
+        end
+        Options[id] = DDObj
+        return DDObj
+    end
+
+    function Window._AddButton(self, parent, id, info)
+        local bframe = create("TextButton", {Text = info.Text or "Button", Size = UDim2.new(1,-8,0,30), BackgroundColor3 = STYLE.ACCENT, Parent = parent})
+        create("UICorner",{Parent=bframe, CornerRadius = UDim.new(0,6)})
+        bframe.MouseEnter:Connect(function() tween(bframe, {BackgroundColor3 = STYLE.ELEM}, 0.12) end)
+        bframe.MouseLeave:Connect(function() tween(bframe, {BackgroundColor3 = STYLE.ACCENT}, 0.12) end)
+        bframe.MouseButton1Click:Connect(function()
+            if info.Callback then pcall(info.Callback) end
+        end)
+        return bframe
+    end
+
+    -- finalize window object
+    Library.Windows[#Library.Windows+1] = Window
+    return Window
 end
 
-local Adapter = {}
-
-Adapter.Attach = AttachLinoriaAPIToSection
-Adapter.CreateSection = CreateSection
-Adapter.Library = Library
-Adapter.UmbrellaAPI = UmbrellaAPI
-
-return Adapter
-
+-- Public API
+return {
+    CreateWindow = function(...) return Library:CreateWindow(...) end,
+    _internal = Library,
+    Toggles = Toggles,
+    Options = Options
+}
